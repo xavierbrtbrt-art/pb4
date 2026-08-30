@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nica & Jebi — Live Photo Booth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root{
+    /* Girly pink · yellow · brown palette */
+    --curtain: #E88FAF;
+    --curtain-deep: #6B4035;
+    --curtain-light: #FFD9A8;
+    --cream: #FFF7E8;
+    --gold: #F4C95D;
+    --gold-bright: #FFE7A3;
+    --flash: #FFFDF7;
+    --ink: #3E2723;
+    --pink: #F7B6C8;
+    --pink-deep: #D96F98;
+    --brown: #6B4035;
+    --brown-soft: #9A6A58;
+    --yellow: #FFE7A3;
+    --ok: #7FBF8F;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(255,231,163,0.95) 0%, rgba(255,231,163,0) 32%),
+      radial-gradient(circle at 85% 20%, rgba(247,182,200,0.95) 0%, rgba(247,182,200,0) 35%),
+      linear-gradient(145deg, #F7B6C8 0%, #FFD9A8 45%, #E8A0B9 68%, #6B4035 100%);
+    font-family:'DM Sans', sans-serif;
+    color:var(--cream);
+    display:flex; align-items:center; justify-content:center;
+    padding:32px 16px;
+  }
+  .stage{ width:100%; max-width:560px; display:flex; flex-direction:column; align-items:center; }
+  .eyebrow{ font-size:12px; letter-spacing:0.32em; text-transform:uppercase; color:var(--brown); margin-bottom:6px; }
+  h1{
+    font-family:'Big Shoulders Display', sans-serif; font-weight:900;
+    font-size:clamp(36px, 9vw, 56px); line-height:0.9; margin:0 0 6px; text-align:center;
+    text-shadow: 0 2px 0 rgba(107,64,53,0.18);
+  }
+  .sub{ text-align:center; color:rgba(62,39,35,0.72); font-size:14px; margin-bottom:24px; max-width:380px; }
+
+  /* setup card */
+  .card{
+    width:100%; background: linear-gradient(145deg, rgba(255,247,232,0.96), rgba(247,182,200,0.94));
+    border-radius:18px; padding:26px 22px;
+    box-shadow: 0 0 0 2px rgba(244,201,93,0.65), 0 20px 50px rgba(62,39,35,0.25);
+    display:flex; flex-direction:column; align-items:center; gap:16px; text-align:center;
+  }
+  .status-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:6px; background:var(--pink); }
+  .status-dot.live{ background:var(--ok); box-shadow:0 0 8px var(--ok); }
+  .status-line{ font-size:13px; color:rgba(246,236,217,0.85); display:flex; align-items:center; }
+
+  button{
+    font-family:'Big Shoulders Display', sans-serif; font-weight:700; letter-spacing:0.06em;
+    text-transform:uppercase; font-size:14px; padding:12px 22px; border-radius:999px; border:none;
+    cursor:pointer; transition: transform 120ms ease;
+  }
+  button:focus-visible{ outline:3px solid var(--gold-bright); outline-offset:2px; }
+  button:active{ transform:scale(0.96); }
+  button:disabled{ opacity:0.45; cursor:not-allowed; }
+  .btn-primary{ background: linear-gradient(180deg, var(--yellow), var(--gold)); color: var(--ink); }
+  .btn-ghost{ background:transparent; color:var(--brown); border:1.5px solid rgba(107,64,53,0.38); }
+  .btn-ghost:not(:disabled):hover{ border-color:var(--pink-deep); color:var(--pink-deep); }
+
+  .link-row{
+    width:100%; display:flex; gap:8px; align-items:center;
+    background:rgba(255,247,232,0.45); border:1px solid rgba(107,64,53,0.28);
+    border-radius:10px; padding:8px 10px;
+  }
+  .link-row input{
+    flex:1; background:transparent; border:none; color:var(--brown); font-size:12px; outline:none;
+  }
+
+  .spinner{
+    width:16px; height:16px; border-radius:50%;
+    border:2px solid rgba(107,64,53,0.18); border-top-color:var(--pink-deep);
+    animation: spin 0.8s linear infinite; display:inline-block;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* booth */
+  .booth{ display:none; width:100%; flex-direction:column; align-items:center; }
+  .booth.show{ display:flex; }
+
+  .booth-marquee{
+    width:100%; display:flex; justify-content:space-between; align-items:center;
+    padding:0 4px 10px; font-family:'Big Shoulders Display', sans-serif; font-weight:700;
+    letter-spacing:0.08em; font-size:13px; color:var(--pink-deep); text-transform:uppercase;
+  }
+
+  .duo-screen{
+    position:relative; width:100%; aspect-ratio:16/9; background:var(--ink);
+    border-radius:10px; overflow:hidden; border:3px solid rgba(244,201,93,0.8);
+    display:flex;
+  }
+  .pane{ position:relative; width:50%; height:100%; overflow:hidden; background:#000; }
+  .pane + .pane{ border-left:2px solid var(--pink); }
+  .pane video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .pane.local video{ transform:scaleX(-1); }
+  .pane-label{
+    position:absolute; bottom:6px; left:8px; font-size:10px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--yellow); background:rgba(62,39,35,0.62);
+    padding:2px 8px; border-radius:999px;
+  }
+
+  .flash-layer{ position:absolute; inset:0; background:var(--flash); opacity:0; pointer-events:none; z-index:5; }
+  .flash-layer.pop{ animation: flashpop 480ms cubic-bezier(0.1,0.8,0.3,1); }
+  @keyframes flashpop{
+    0%{ opacity:0; }
+    8%{ opacity:1; }
+    22%{ opacity:0.35; }
+    35%{ opacity:0.9; }
+    100%{ opacity:0; }
+  }
+  .duo-screen.shutter{ animation: shutterRing 480ms ease-out; }
+  @keyframes shutterRing{
+    0%{ box-shadow: inset 0 0 0 0 var(--pink); }
+    15%{ box-shadow: inset 0 0 0 8px var(--pink); }
+    100%{ box-shadow: inset 0 0 0 0 rgba(212,162,78,0); }
+  }
+
+  .countdown{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:'Big Shoulders Display', sans-serif; font-weight:900;
+    font-size:clamp(60px, 18vw, 110px); color:var(--flash);
+    text-shadow:0 4px 20px rgba(0,0,0,0.6); opacity:0; pointer-events:none; z-index:6;
+  }
+  .countdown.show{ animation: pulse 1s ease-out; opacity:1; }
+  @keyframes pulse{ 0%{transform:scale(0.6);opacity:0;} 30%{transform:scale(1.08);opacity:1;} 100%{transform:scale(1);opacity:0.85;} }
+
+  .shot-counter{
+    position:absolute; top:10px; right:10px; z-index:6;
+    background:rgba(28,14,17,0.6); border:1px solid var(--gold); color:var(--yellow);
+    font-family:'Big Shoulders Display', sans-serif; font-weight:700; letter-spacing:0.06em;
+    font-size:12px; padding:4px 10px; border-radius:999px;
+  }
+
+  .controls{ display:flex; gap:10px; justify-content:center; align-items:center; margin-top:14px; flex-wrap:wrap; }
+
+  .filters{ display:flex; gap:8px; justify-content:center; margin-top:12px; }
+  .filter-chip{
+    font-family:'DM Sans', sans-serif; font-size:12px; font-weight:500; padding:7px 14px;
+    border-radius:999px; border:1px solid rgba(107,64,53,0.35); background:rgba(255,247,232,0.28);
+    color:rgba(62,39,35,0.75); text-transform:none; letter-spacing:0;
+  }
+  .filter-chip.active{ background:var(--pink); color:var(--ink); border-color:var(--gold); }
+
+  .strip-wrap{ display:none; flex-direction:column; align-items:center; margin-top:22px; }
+  .strip-wrap.show{ display:flex; }
+  .filmstrip{
+    background:var(--brown); padding:14px 10px; border-radius:8px;
+    display:flex; flex-direction:column; gap:8px; position:relative;
+    box-shadow:0 16px 40px rgba(0,0,0,0.5);
+  }
+  .filmstrip::before, .filmstrip::after{
+    content:""; position:absolute; left:0; right:0; height:12px;
+    background: repeating-linear-gradient(90deg, var(--yellow) 0 6px, transparent 6px 16px); opacity:0.55;
+  }
+  .filmstrip::before{ top:0; } .filmstrip::after{ bottom:0; }
+  #filmstrip{ display:flex; flex-direction:column; gap:8px; }
+  .strip-caption{
+    font-family:'Big Shoulders Display', sans-serif; font-weight:700; letter-spacing:0.1em;
+    text-transform:uppercase; font-size:11px; color:var(--yellow); text-align:center; margin-top:8px;
+  }
+  .hint{ font-size:12px; color:rgba(62,39,35,0.58); text-align:center; margin-top:18px; max-width:380px; }
+
+  /* cute decorative frame */
+  .cute-frame{
+    position:relative;
+    border: 3px dashed var(--pink-deep) !important;
+    border-radius:10px;
+    box-shadow:
+      0 0 0 4px var(--cream),
+      0 0 0 7px var(--gold),
+      0 20px 50px rgba(62,39,35,0.28);
+  }
+  .duo-screen-wrap{ width:100%; }
+  .cute-sticker{
+    position:absolute;
+    font-size:20px;
+    line-height:1;
+    filter: drop-shadow(0 2px 2px rgba(62,39,35,0.35));
+    z-index:7;
+    pointer-events:none;
+    user-select:none;
+  }
+  .cute-sticker.tl{ top:-12px; left:-12px; transform:rotate(-18deg); }
+  .cute-sticker.tr{ top:-12px; right:-12px; transform:rotate(18deg); }
+  .cute-sticker.bl{ bottom:-12px; left:-12px; transform:rotate(18deg); }
+  .cute-sticker.br{ bottom:-12px; right:-12px; transform:rotate(-18deg); }
+
+  /* interactive sticker decorating */
+  .sticker-tray{ margin-top:16px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .tray-label{ font-size:11px; color:rgba(62,39,35,0.6); margin:0; text-align:center; }
+  .tray-items{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  .tray-sticker{
+    font-size:26px; cursor:grab; touch-action:none; user-select:none;
+    padding:4px 6px; border-radius:8px; transition: transform 120ms ease;
+    background:rgba(255,247,232,0.5); border:1px solid rgba(107,64,53,0.2);
+  }
+  .tray-sticker:hover{ transform:scale(1.15); }
+  .tray-sticker:active{ cursor:grabbing; }
+
+  .strip-photo{ position:relative; }
+  .strip-photo img{ width:260px; display:block; border-radius:2px; }
+
+  .placed-sticker{
+    position:absolute; font-size:28px; transform:translate(-50%,-50%);
+    touch-action:none; cursor:grab; user-select:none;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.35));
+  }
+
+  .drag-ghost{
+    position:fixed; pointer-events:none; font-size:30px; z-index:9999;
+    transform:translate(-50%,-50%); filter: drop-shadow(0 3px 4px rgba(0,0,0,0.4));
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .flash-layer.pop, .duo-screen.shutter, .countdown.show, .spinner{ animation:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="eyebrow">Nica &amp; Jebi</div>
+  <h1>Nica &amp; Jebi</h1>
+  <p class="sub">Connect two cameras from anywhere, then take a strip together in real time.</p>
+
+  <div class="card cute-frame" id="setupCard">
+    <span class="cute-sticker tl">🎀</span>
+    <span class="cute-sticker tr">✨</span>
+    <span class="cute-sticker bl">💛</span>
+    <span class="cute-sticker br">🌸</span>
+    <div class="status-line" id="statusLine"><span class="status-dot" id="statusDot"></span><span id="statusText">Starting your camera…</span></div>
+
+    <div id="hostPanel" style="display:none; width:100%; flex-direction:column; gap:12px; align-items:center;">
+      <p style="margin:0; font-size:13px; color:rgba(62,39,35,0.75);">Send this link to your partner:</p>
+      <div class="link-row">
+        <input type="text" id="linkInput" readonly>
+        <button class="btn-ghost" id="copyBtn" style="padding:8px 14px; font-size:11px;">Copy</button>
+      </div>
+      <div class="status-line"><span class="spinner"></span>&nbsp;Waiting for your partner to join…</div>
+    </div>
+
+    <div id="joinPanel" style="display:none;">
+      <div class="status-line"><span class="spinner"></span>&nbsp;Connecting to your partner…</div>
+    </div>
+
+    <div id="startPanel" style="display:none; flex-direction:column; gap:10px; align-items:center;">
+      <button class="btn-primary" id="startSessionBtn">Start a session</button>
+      <p style="margin:0; font-size:12px; color:rgba(62,39,35,0.58);">or open a link your partner sent you</p>
+    </div>
+  </div>
+
+  <div class="booth" id="booth">
+    <div class="booth-marquee">
+      <span><span class="status-dot live"></span>Live</span>
+      <span>Now Showing</span>
+    </div>
+    <div class="cute-frame duo-screen-wrap">
+      <span class="cute-sticker tl">🎀</span>
+      <span class="cute-sticker tr">⭐</span>
+      <span class="cute-sticker bl">🌸</span>
+      <span class="cute-sticker br">💛</span>
+      <div class="duo-screen" id="duoScreen">
+      <div class="pane local">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <span class="pane-label">You</span>
+      </div>
+      <div class="pane remote">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <span class="pane-label">Partner</span>
+      </div>
+      <div class="flash-layer" id="flashLayer"></div>
+      <div class="countdown" id="countdown"></div>
+      <div class="shot-counter" id="shotCounter">0 / 4</div>
+    </div>
+    </div>
+
+    <div class="filters">
+      <button class="filter-chip active" data-filter="none">Color</button>
+      <button class="filter-chip" data-filter="grayscale(1) contrast(1.1)">B&amp;W</button>
+      <button class="filter-chip" data-filter="sepia(0.65) contrast(1.05)">Sepia</button>
+      <button class="filter-chip" data-filter="contrast(1.35) saturate(1.4) brightness(0.95)">Vivid</button>
+      <button class="filter-chip" data-filter="grayscale(1) contrast(1.5) brightness(1.05)">High Contrast</button>
+      <button class="filter-chip" data-filter="sepia(0.3) saturate(0.7) brightness(0.9) contrast(1.1)">Vintage</button>
+      <button class="filter-chip" data-filter="saturate(1.15) hue-rotate(-8deg) brightness(1.05)">Warm</button>
+      <button class="filter-chip" data-filter="saturate(1.1) hue-rotate(8deg) brightness(1.02)">Cool</button>
+    </div>
+
+    <div class="controls">
+      <button class="btn-primary" id="captureBtn">Start the strip</button>
+      <button class="btn-ghost" id="retakeBtn" style="display:none;">Retake</button>
+    </div>
+  </div>
+
+  <div class="strip-wrap" id="stripWrap">
+    <div class="filmstrip cute-frame" id="filmstripFrame">
+      <span class="cute-sticker tl">🌸</span>
+      <span class="cute-sticker tr">💛</span>
+      <span class="cute-sticker bl">✨</span>
+      <span class="cute-sticker br">🎀</span>
+      <div id="filmstrip"></div>
+    </div>
+    <div class="strip-caption">Your strip is ready</div>
+
+    <div class="sticker-tray" id="stickerTray">
+      <p class="tray-label">Drag stickers onto your photos ✨</p>
+      <div class="tray-items">
+        <span class="tray-sticker" data-emoji="🎀">🎀</span>
+        <span class="tray-sticker" data-emoji="✨">✨</span>
+        <span class="tray-sticker" data-emoji="🌸">🌸</span>
+        <span class="tray-sticker" data-emoji="💛">💛</span>
+        <span class="tray-sticker" data-emoji="⭐">⭐</span>
+        <span class="tray-sticker" data-emoji="💕">💕</span>
+        <span class="tray-sticker" data-emoji="🦋">🦋</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-primary" id="downloadBtn">Download strip</button>
+      <button class="btn-ghost" id="retakeBtn2">Take another</button>
+    </div>
+  </div>
+
+  <p class="hint">Video runs directly between your two browsers over a free public connection service — nothing is stored on a server. Either of you can start the countdown.</p>
+</div>
+
+<script>
+(function(){
+  const statusText = document.getElementById('statusText');
+  const statusDot = document.getElementById('statusDot');
+  const hostPanel = document.getElementById('hostPanel');
+  const joinPanel = document.getElementById('joinPanel');
+  const startPanel = document.getElementById('startPanel');
+  const linkInput = document.getElementById('linkInput');
+  const copyBtn = document.getElementById('copyBtn');
+  const startSessionBtn = document.getElementById('startSessionBtn');
+  const setupCard = document.getElementById('setupCard');
+  const booth = document.getElementById('booth');
+  const localVideo = document.getElementById('localVideo');
+  const remoteVideo = document.getElementById('remoteVideo');
+  const duoScreen = document.getElementById('duoScreen');
+  const captureBtn = document.getElementById('captureBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const retakeBtn2 = document.getElementById('retakeBtn2');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const countdownEl = document.getElementById('countdown');
+  const flashLayer = document.getElementById('flashLayer');
+  const shotCounter = document.getElementById('shotCounter');
+  const filtersEl = document.querySelector('.filters');
+  const stripWrap = document.getElementById('stripWrap');
+  const filmstrip = document.getElementById('filmstrip');
+
+  const SHOTS = 4;
+  let currentFilter = 'none';
+  let localStream = null;
+  let peer = null;
+  let dataConn = null;
+  let shots = [];
+  let stickers = []; // { id, shotIndex, emoji, xPct, yPct }
+  let busy = false;
+
+  const params = new URLSearchParams(window.location.search);
+  const roomId = params.get('room');
+
+  function setStatus(text, live){
+    statusText.textContent = text;
+    statusDot.classList.toggle('live', !!live);
+  }
+
+  filtersEl.addEventListener('click', (e) => {
+    const chip = e.target.closest('.filter-chip');
+    if(!chip) return;
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentFilter = chip.dataset.filter;
+    const cssFilter = currentFilter === 'none' ? '' : currentFilter;
+    localVideo.style.filter = cssFilter;
+    remoteVideo.style.filter = cssFilter;
+  });
+
+  function enterBooth(){
+    setupCard.style.display = 'none';
+    booth.classList.add('show');
+  }
+
+  function wireDataConn(conn){
+    dataConn = conn;
+    conn.on('data', (msg) => {
+      if(msg && msg.type === 'start' && !busy){
+        runSequence(true);
+      } else if(msg && msg.type === 'retake'){
+        resetBooth(true);
+      }
+    });
+  }
+
+  async function getCamera(){
+    localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' }, audio:false });
+    localVideo.srcObject = localStream;
+  }
+
+  async function startAsHost(){
+    startPanel.style.display = 'none';
+    setStatus('Starting your camera…');
+    try{ await getCamera(); } catch(e){ setStatus('Camera blocked — allow camera access and reload.'); return; }
+
+    peer = new Peer();
+    peer.on('open', (id) => {
+      const link = window.location.origin + window.location.pathname + '?room=' + id;
+      linkInput.value = link;
+      hostPanel.style.display = 'flex';
+      setStatus('Camera ready.', true);
+    });
+    peer.on('call', (call) => {
+      call.answer(localStream);
+      call.on('stream', (remoteStream) => {
+        remoteVideo.srcObject = remoteStream;
+        enterBooth();
+      });
+    });
+    peer.on('connection', wireDataConn);
+    peer.on('error', (err) => setStatus('Connection error: ' + err.type));
+  }
+
+  async function startAsGuest(){
+    joinPanel.style.display = 'block';
+    setStatus('Starting your camera…');
+    try{ await getCamera(); } catch(e){ setStatus('Camera blocked — allow camera access and reload.'); return; }
+
+    peer = new Peer();
+    peer.on('open', () => {
+      const call = peer.call(roomId, localStream);
+      call.on('stream', (remoteStream) => {
+        remoteVideo.srcObject = remoteStream;
+        enterBooth();
+      });
+      dataConn = peer.connect(roomId);
+      wireDataConn(dataConn);
+    });
+    peer.on('error', (err) => setStatus('Connection error: ' + err.type));
+  }
+
+  copyBtn.addEventListener('click', () => {
+    linkInput.select();
+    navigator.clipboard.writeText(linkInput.value).then(() => {
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => copyBtn.textContent = 'Copy', 1500);
+    }).catch(() => {});
+  });
+
+  startSessionBtn.addEventListener('click', startAsHost);
+
+  if(roomId){
+    startAsGuest();
+  } else {
+    startPanel.style.display = 'flex';
+    setStatus('Ready when you are.');
+  }
+
+  // ---- booth capture logic ----
+  function wait(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+  async function runCountdown(){
+    for(const n of ['3','2','1']){
+      countdownEl.textContent = n;
+      countdownEl.classList.remove('show');
+      void countdownEl.offsetWidth;
+      countdownEl.classList.add('show');
+      await wait(700);
+    }
+    countdownEl.classList.remove('show');
+  }
+
+  function drawCover(ctx, video, x, y, w, h, mirror){
+    const vw = video.videoWidth || w;
+    const vh = video.videoHeight || h;
+    const targetRatio = w / h;
+    const srcRatio = vw / vh;
+    let sx, sy, sw, sh;
+    if(srcRatio > targetRatio){
+      sh = vh; sw = vh * targetRatio; sx = (vw - sw) / 2; sy = 0;
+    } else {
+      sw = vw; sh = vw / targetRatio; sx = 0; sy = (vh - sh) / 2;
+    }
+    ctx.save();
+    if(mirror){
+      ctx.translate(x + w, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+    } else {
+      ctx.drawImage(video, sx, sy, sw, sh, x, y, w, h);
+    }
+    ctx.restore();
+  }
+
+  function snap(){
+    const W = 480, H = 270;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.filter = currentFilter === 'none' ? 'none' : currentFilter;
+    drawCover(ctx, localVideo, 0, 0, W/2, H, true);
+    drawCover(ctx, remoteVideo, W/2, 0, W/2, H, false);
+    ctx.filter = 'none';
+    ctx.strokeStyle = 'rgba(212,162,78,0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+    return canvas.toDataURL('image/jpeg', 0.92);
+  }
+
+  function flash(){
+    flashLayer.classList.remove('pop');
+    void flashLayer.offsetWidth;
+    flashLayer.classList.add('pop');
+
+    duoScreen.classList.remove('shutter');
+    void duoScreen.offsetWidth;
+    duoScreen.classList.add('shutter');
+  }
+
+  async function runSequence(fromRemote){
+    if(busy) return;
+    busy = true;
+    shots = [];
+    captureBtn.disabled = true;
+    retakeBtn.style.display = 'none';
+    stripWrap.classList.remove('show');
+
+    if(!fromRemote && dataConn && dataConn.open){
+      dataConn.send({ type:'start' });
+    }
+
+    for(let i = 0; i < SHOTS; i++){
+      await runCountdown();
+      flash();
+      await wait(120);
+      shots.push(snap());
+      shotCounter.textContent = (i+1) + ' / ' + SHOTS;
+      await wait(500);
+    }
+
+    buildStrip();
+    busy = false;
+    captureBtn.disabled = false;
+    captureBtn.textContent = 'Retake the strip';
+    retakeBtn.style.display = 'inline-block';
+  }
+
+  function buildStrip(){
+    filmstrip.innerHTML = '';
+    stickers = [];
+    shots.forEach((src, idx) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'strip-photo';
+      wrap.dataset.shotIndex = idx;
+      const img = document.createElement('img');
+      img.src = src;
+      wrap.appendChild(img);
+      filmstrip.appendChild(wrap);
+    });
+    stripWrap.classList.add('show');
+    stripWrap.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
+
+  // ---- sticker decorating ----
+  function startDragFromTray(e, emoji){
+    e.preventDefault();
+    const ghost = document.createElement('div');
+    ghost.className = 'drag-ghost';
+    ghost.textContent = emoji;
+    document.body.appendChild(ghost);
+    const moveGhost = (x, y) => { ghost.style.left = x + 'px'; ghost.style.top = y + 'px'; };
+    moveGhost(e.clientX, e.clientY);
+
+    function onMove(ev){ moveGhost(ev.clientX, ev.clientY); }
+    function onUp(ev){
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      ghost.remove();
+      const target = document.elementFromPoint(ev.clientX, ev.clientY);
+      const photoEl = target && target.closest('.strip-photo');
+      if(photoEl){
+        const rect = photoEl.getBoundingClientRect();
+        const xPct = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+        const yPct = Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height));
+        placeSticker(photoEl, emoji, xPct, yPct, Number(photoEl.dataset.shotIndex));
+      }
+    }
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }
+
+  function placeSticker(photoEl, emoji, xPct, yPct, shotIndex){
+    const id = 's' + Math.random().toString(36).slice(2, 9);
+    const stickerData = { id, shotIndex, emoji, xPct, yPct };
+    stickers.push(stickerData);
+    renderPlacedSticker(photoEl, stickerData);
+  }
+
+  function renderPlacedSticker(photoEl, s){
+    const el = document.createElement('span');
+    el.className = 'placed-sticker';
+    el.textContent = s.emoji;
+    el.style.left = (s.xPct * 100) + '%';
+    el.style.top = (s.yPct * 100) + '%';
+    photoEl.appendChild(el);
+
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      let moved = false;
+      const startX = e.clientX, startY = e.clientY;
+
+      function onMove(ev){
+        const dx = ev.clientX - startX, dy = ev.clientY - startY;
+        if(Math.abs(dx) > 4 || Math.abs(dy) > 4) moved = true;
+        const rect = photoEl.getBoundingClientRect();
+        const xPct = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+        const yPct = Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height));
+        el.style.left = (xPct * 100) + '%';
+        el.style.top = (yPct * 100) + '%';
+        const st = stickers.find(x => x.id === s.id);
+        if(st){ st.xPct = xPct; st.yPct = yPct; }
+      }
+      function onUp(){
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onUp);
+        if(!moved){
+          stickers = stickers.filter(x => x.id !== s.id);
+          el.remove();
+        }
+      }
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onUp);
+    });
+  }
+
+  document.querySelectorAll('.tray-sticker').forEach(el => {
+    el.addEventListener('pointerdown', (e) => startDragFromTray(e, el.dataset.emoji));
+  });
+
+  function resetBooth(fromRemote){
+    shots = [];
+    stripWrap.classList.remove('show');
+    captureBtn.textContent = 'Start the strip';
+    shotCounter.textContent = '0 / ' + SHOTS;
+    retakeBtn.style.display = 'none';
+    if(!fromRemote && dataConn && dataConn.open){
+      dataConn.send({ type:'retake' });
+    }
+  }
+
+  captureBtn.addEventListener('click', () => runSequence(false));
+  retakeBtn.addEventListener('click', () => resetBooth(false));
+  retakeBtn2.addEventListener('click', () => { resetBooth(false); window.scrollTo({top:0, behavior:'smooth'}); });
+
+  downloadBtn.addEventListener('click', () => {
+    if(shots.length === 0) return;
+    const imgW = 480, gap = 18, pad = 22, captionH = 60;
+    const imgH = Math.round(imgW * (270/480));
+    const canvas = document.createElement('canvas');
+    canvas.width = imgW + pad*2;
+    canvas.height = pad*2 + shots.length*imgH + (shots.length-1)*gap + captionH;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#6B4035';
+    ctx.fillRect(0,0,canvas.width, canvas.height);
+
+    let loaded = 0;
+    shots.forEach((src, i) => {
+      const im = new Image();
+      im.onload = () => {
+        const y = pad + i*(imgH+gap);
+        ctx.drawImage(im, pad, y, imgW, imgH);
+
+        stickers.filter(st => st.shotIndex === i).forEach(st => {
+          const sx = pad + st.xPct * imgW;
+          const sy = y + st.yPct * imgH;
+          ctx.font = '46px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(st.emoji, sx, sy);
+        });
+
+        loaded++;
+        if(loaded === shots.length){
+          ctx.fillStyle = '#FFE7A3';
+          ctx.font = '700 22px Georgia, serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText('NICA & JEBI · LIVE BOOTH', canvas.width/2, canvas.height - 22);
+          const link = document.createElement('a');
+          link.download = 'photo-booth-strip.jpg';
+          link.href = canvas.toDataURL('image/jpeg', 0.95);
+          link.click();
+        }
+      };
+      im.src = src;
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
